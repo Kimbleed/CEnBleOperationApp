@@ -95,4 +95,7 @@ public class BleManager {
         mBleScanner.cancelLeScan();
     }
 
+    public void write(){
+    }
+
 }

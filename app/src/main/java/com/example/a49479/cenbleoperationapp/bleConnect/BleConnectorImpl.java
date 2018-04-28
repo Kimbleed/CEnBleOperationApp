@@ -30,7 +30,7 @@ public class BleConnectorImpl implements IBleConnector {
     private Context mContext;
     private BluetoothAdapter mBleAdapter;
 
-    private String mMac="";
+    private String mMac = "";
     private BluetoothGatt mBleGatt;
     private List<BluetoothGattService> mGattServicesList;
     private BluetoothGattService mNotifyBleService;
@@ -40,8 +40,9 @@ public class BleConnectorImpl implements IBleConnector {
 
     private int mBleConnectState = BluetoothProfile.STATE_DISCONNECTED;
 
-    private BleConnectorCallback mBleConnectCallback;
+    private BleConnectorResponse mBleConnectResponse;
     private BleNotifyResponse mBleNotifyResponse;
+    private BleWriteResponse mBleWriteResponse;
 
     private BluetoothGattCallback mBleGattCallback = new BluetoothGattCallback() {
 
@@ -58,14 +59,14 @@ public class BleConnectorImpl implements IBleConnector {
             if (status == BluetoothProfile.STATE_CONNECTED && newState == 0) {
                 Log.i(TAG, "onConnectionStateChange  connected");
                 mBleGatt = gatt;
-                changeBleConnectState(BluetoothProfile.STATE_CONNECTED);
+                connectResponse(BluetoothProfile.STATE_CONNECTED);
                 gatt.discoverServices();
             } else if (status == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.i(TAG, "onConnectionStateChange  disconnected ");
                 gatt.close();
                 //蓝牙连接断开 且 断开的蓝牙就是当前操作的蓝牙时，则 mMac 和 mBleGatt 赋空
                 if (mMac.equals(gatt.getDevice().getAddress())) {
-                    changeBleConnectState(BluetoothProfile.STATE_DISCONNECTED);
+                    connectResponse(BluetoothProfile.STATE_DISCONNECTED);
                     reset();
                 }
                 //蓝牙连接断开 且 断开的蓝牙不是当前操作的蓝牙时，则
@@ -74,10 +75,10 @@ public class BleConnectorImpl implements IBleConnector {
                 }
             } else if (status == BluetoothProfile.STATE_DISCONNECTING) {
                 Log.i(TAG, "onConnectionStateChange  disconnecting ");
-                changeBleConnectState(BluetoothProfile.STATE_DISCONNECTING);
+                connectResponse(BluetoothProfile.STATE_DISCONNECTING);
             } else if (status == BluetoothProfile.STATE_CONNECTING) {
                 Log.i(TAG, "onConnectionStateChange  disconnected ");
-                changeBleConnectState(BluetoothProfile.STATE_CONNECTING);
+                connectResponse(BluetoothProfile.STATE_CONNECTING);
             }
         }
 
@@ -139,7 +140,17 @@ public class BleConnectorImpl implements IBleConnector {
          */
         @Override
         public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
-            super.onCharacteristicWrite(gatt, characteristic, status);
+            String uuidStr = characteristic.getUuid().toString();
+            if (uuidStr.equals(mWriteBleCharacteristic.getUuid().toString())) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    writeResponse(BleCode.REQUEST_SUCCESS);
+                } else {
+                    Log.i(TAG, "onCharacteristicWrite write characteristic failure");
+                    writeResponse(BleCode.REQUEST_WRITE_FAILURE);
+                }
+            } else {
+                Log.i(TAG, "onCharacteristicWrite characteristic not match the characteristic of the method \"write\"");
+            }
         }
 
         /**
@@ -165,12 +176,12 @@ public class BleConnectorImpl implements IBleConnector {
         mContext = context;
     }
 
-    public void connectGatt(BluetoothDevice device, @NonNull BleConnectorCallback callback) {
+    public void connectGatt(BluetoothDevice device, @NonNull BleConnectorResponse callback) {
         connectGatt(device.getAddress(), callback);
     }
 
     @Override
-    public void connectGatt(String mac, @NonNull BleConnectorCallback callback) {
+    public void connectGatt(String mac, @NonNull BleConnectorResponse callback) {
         //若 mMac 为空，代表当前没有正在操作(非以下三种状态：已连接、连接中、正在断开)的设备
         if (TextUtils.isEmpty(mMac)) {
             mMac = mac;
@@ -179,10 +190,10 @@ public class BleConnectorImpl implements IBleConnector {
         else {
             // 若请求连接的地址 是当前正在操作的设备的地址
             if (mMac.equals(mac)) {
-                mBleConnectCallback = callback;
+                mBleConnectResponse = callback;
 
                 if (mBleConnectState == BluetoothProfile.STATE_CONNECTED) {
-                    changeBleConnectState(BluetoothProfile.STATE_CONNECTED);
+                    connectResponse(BluetoothProfile.STATE_CONNECTED);
                     return;
                 } else {
                     Log.i(TAG, "connectGatt has request ble connect , waiting callback");
@@ -192,12 +203,12 @@ public class BleConnectorImpl implements IBleConnector {
             else {
                 mBleGatt.disconnect();
                 reset();
-                changeBleConnectState(BluetoothProfile.STATE_DISCONNECTED);
+                connectResponse(BluetoothProfile.STATE_DISCONNECTED);
                 mMac = mac;
             }
         }
-        mBleConnectCallback = callback;
-        changeBleConnectState(BluetoothProfile.STATE_CONNECTING);
+        mBleConnectResponse = callback;
+        connectResponse(BluetoothProfile.STATE_CONNECTING);
         BluetoothDevice device = mBleAdapter.getRemoteDevice(mac);
         device.connectGatt(mContext, false, mBleGattCallback);
     }
@@ -228,22 +239,27 @@ public class BleConnectorImpl implements IBleConnector {
 
     @Override
     public void write(String mac, UUID serviceId, UUID characterId, byte[] data, BleWriteResponse response) {
-        if (mac.equals(mMac) && mBleConnectState == BluetoothProfile.STATE_CONNECTED) {
-            writePrepare(serviceId, characterId, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
-            writeData(data);
-        } else {
-            if (!mac.equals(mMac)) {
-                Log.i(TAG, "write params mac doesn't match the mMac");
+        mBleWriteResponse = response;
+        if (mac.equals(mMac)) {
+            if (mBleConnectState == BluetoothProfile.STATE_CONNECTED) {
+                if (writePrepare(serviceId, characterId, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT))
+                    writeData(data);
+            } else {
+                Log.i(TAG, "write ble connect state is " + BleCode.toString(mBleConnectState));
+                writeResponse(mBleConnectState);
             }
-            Log.i(TAG, "write ble connect state is " + BleCode.toString(mBleConnectState));
+        } else {
+            Log.i(TAG, "write params mac doesn't match the mMac");
+            writeResponse(BleCode.REQUEST_MAC_NO_MATCH);
         }
     }
 
     @Override
     public void writeNoRsp(String mac, UUID serviceId, UUID characterId, byte[] data, BleWriteResponse response) {
+        mBleWriteResponse = response;
         if (mac.equals(mMac) && mBleConnectState == BluetoothProfile.STATE_CONNECTED) {
-            writePrepare(serviceId, characterId, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
-            writeData(data);
+            if (writePrepare(serviceId, characterId, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE))
+                writeData(data);
         } else {
 
         }
@@ -262,6 +278,8 @@ public class BleConnectorImpl implements IBleConnector {
         mGattServicesList = null;
         mNotifyBleService = null;
         mNotifyBleCharacteristic = null;
+        mWriteBleSerivce = null;
+        mWriteBleCharacteristic = null;
     }
 
     /**
@@ -295,31 +313,43 @@ public class BleConnectorImpl implements IBleConnector {
 
     /**
      * @param state 蓝牙连接状态
-     *              1.BluetoothProfile.STATE_CONNECTED         变为已连接，调用bleConnectCallback.onResponse 后，callback置空
-     *              2.BluetoothProfile.STATE_DISCONNECTED      变为断开连接，调用bleConnectCallback.onResponse 后，callback置空
+     *              1.BluetoothProfile.STATE_CONNECTED         变为已连接，mBleConnectResponse.onResponse 后，callback置空
+     *              2.BluetoothProfile.STATE_DISCONNECTED      变为断开连接，mBleConnectResponse.onResponse 后，callback置空
      *              3.BluetoothProfile.STATE_CONNECTING
      *              4.BluetoothProfile.STATE_DISCONNECTING
      */
-    private void changeBleConnectState(int state) {
-        Log.i(TAG, "changeBleConnectState :" + BleCode.toString(state));
+    private void connectResponse(int state) {
+        Log.i(TAG, "connectResponse :" + BleCode.toString(state));
         mBleConnectState = state;
-        mBleConnectCallback.onResponse(mBleConnectState);
+        BleConnectorResponse response = mBleConnectResponse;
         if (mBleConnectState == BluetoothProfile.STATE_CONNECTED || mBleConnectState == BluetoothProfile.STATE_DISCONNECTED)
-            mBleConnectCallback = null;
+            mBleConnectResponse = null;
+        response.onResponse(mBleConnectState);
+
     }
 
     /**
-     * @param response notify结果
-     *                 1.BleNotifyResponse.BLE_NOTIFY_SUCCESS
-     *                 2.BleNotifyResponse.BLE_NOTIFY_FAILURE
+     * @param result notify结果
      */
-    private void notifyResponse(int response) {
-        Log.i(TAG, "notifyResponse :" + BleCode.toString(response));
-        mBleNotifyResponse.onResponse(response);
+    private void notifyResponse(int result) {
+        Log.i(TAG, "notifyResponse :" + BleCode.toString(result));
+        BleNotifyResponse response = mBleNotifyResponse;
         mBleNotifyResponse = null;
+        mBleNotifyResponse.onResponse(result);
     }
 
     /**
+     * @param result write结果
+     */
+    private void writeResponse(int result) {
+        Log.i(TAG, "writeResponse :" + BleCode.toString(result));
+        BleWriteResponse response = mBleWriteResponse;
+        mBleWriteResponse = null;
+        response.onResponse(result);
+    }
+
+    /**
+     * 为写数据到特征值初始化
      * 获取写数据的  service 和 characteristic ，并声明写类型为 WRITE_TYPE_NO_RESPONSE
      *
      * @param serviceId
@@ -328,25 +358,34 @@ public class BleConnectorImpl implements IBleConnector {
      *                    1.BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
      *                    2.BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
      */
-    private void writePrepare(UUID serviceId, UUID characterId, int writeType) {
-        if (mWriteBleSerivce.getUuid().toString().equals(serviceId) && mWriteBleCharacteristic.getUuid().toString().equals(characterId)) {
-            return;
+    private boolean writePrepare(UUID serviceId, UUID characterId, int writeType) {
+        if (mWriteBleSerivce != null && mWriteBleCharacteristic != null &&          // write 的 service 和 characteristic 不为空
+                mWriteBleSerivce.getUuid().toString().equals(serviceId) &&          // 缓存的 service是目标service
+                mWriteBleCharacteristic.getUuid().toString().equals(characterId))   // 缓存的 characteristic是目标characteristic
+        {
+            //满足则不需要做准备工作
+            return true;
         }
 
         mWriteBleSerivce = mBleGatt.getService(serviceId);
         if (null == mWriteBleSerivce) {
             Log.e(TAG, "writePrepare get mUartService null");
-            return;
+            return false;
         }
         mWriteBleCharacteristic = mWriteBleSerivce.getCharacteristic(characterId);
         if (null == mWriteBleCharacteristic) {
             Log.e(TAG, "writePrepare get mUartROCharatoristic null");
-            return;
+            return false;
         }
         mWriteBleCharacteristic.setWriteType(writeType);
+        return true;
     }
 
 
+    /**
+     * 写数据到Characteristic
+     * @param data
+     */
     private void writeData(byte[] data) {
         mWriteBleCharacteristic.setValue(data);
         mBleGatt.writeCharacteristic(mWriteBleCharacteristic);
