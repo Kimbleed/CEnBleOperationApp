@@ -35,7 +35,7 @@ public class BleConnectorImpl implements IBleConnector {
     private List<BluetoothGattService> mGattServicesList;
     private BluetoothGattService mNotifyBleService;
     private BluetoothGattCharacteristic mNotifyBleCharacteristic;
-    private BluetoothGattService mWriteBleSerivce;
+    private BluetoothGattService mWriteBleService;
     private BluetoothGattCharacteristic mWriteBleCharacteristic;
 
     private int mBleConnectState = BluetoothProfile.STATE_DISCONNECTED;
@@ -129,7 +129,10 @@ public class BleConnectorImpl implements IBleConnector {
          */
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-            super.onCharacteristicChanged(gatt, characteristic);
+            String characterId = characteristic.getUuid().toString();
+            String serviceId = characteristic.getService().getUuid().toString();
+            Log.i(TAG,"onCharacteristicChanged serviceId:"+serviceId+"  characterId:"+characterId);
+            //解析蓝牙设备返回来的数据
         }
 
         /**
@@ -174,6 +177,13 @@ public class BleConnectorImpl implements IBleConnector {
     public void init(Context context, BluetoothAdapter bluetoothAdapter) {
         mBleAdapter = bluetoothAdapter;
         mContext = context;
+    }
+
+    @Override
+    public boolean isConnectGatt(String mac) {
+        if(mac.equals(mMac)&& mBleConnectState == BluetoothProfile.STATE_CONNECTED)
+            return true;
+        return false;
     }
 
     public void connectGatt(BluetoothDevice device, @NonNull BleConnectorResponse callback) {
@@ -278,7 +288,7 @@ public class BleConnectorImpl implements IBleConnector {
         mGattServicesList = null;
         mNotifyBleService = null;
         mNotifyBleCharacteristic = null;
-        mWriteBleSerivce = null;
+        mWriteBleService = null;
         mWriteBleCharacteristic = null;
     }
 
@@ -359,20 +369,20 @@ public class BleConnectorImpl implements IBleConnector {
      *                    2.BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
      */
     private boolean writePrepare(UUID serviceId, UUID characterId, int writeType) {
-        if (mWriteBleSerivce != null && mWriteBleCharacteristic != null &&          // write 的 service 和 characteristic 不为空
-                mWriteBleSerivce.getUuid().toString().equals(serviceId) &&          // 缓存的 service是目标service
+        if (mWriteBleService != null && mWriteBleCharacteristic != null &&          // write 的 service 和 characteristic 不为空
+                mWriteBleService.getUuid().toString().equals(serviceId) &&          // 缓存的 service是目标service
                 mWriteBleCharacteristic.getUuid().toString().equals(characterId))   // 缓存的 characteristic是目标characteristic
         {
             //满足则不需要做准备工作
             return true;
         }
 
-        mWriteBleSerivce = mBleGatt.getService(serviceId);
-        if (null == mWriteBleSerivce) {
+        mWriteBleService = mBleGatt.getService(serviceId);
+        if (null == mWriteBleService) {
             Log.e(TAG, "writePrepare get mUartService null");
             return false;
         }
-        mWriteBleCharacteristic = mWriteBleSerivce.getCharacteristic(characterId);
+        mWriteBleCharacteristic = mWriteBleService.getCharacteristic(characterId);
         if (null == mWriteBleCharacteristic) {
             Log.e(TAG, "writePrepare get mUartROCharatoristic null");
             return false;

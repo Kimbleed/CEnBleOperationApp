@@ -13,6 +13,8 @@ public interface IBleConnector {
 
     void init(Context context, BluetoothAdapter bleAdapter);
 
+    boolean isConnectGatt(String mac);
+
     void connectGatt(String mac,BleConnectorResponse callback);
 
     void write(String mac,UUID serviceId,UUID characterId,byte[] data,BleWriteResponse response);

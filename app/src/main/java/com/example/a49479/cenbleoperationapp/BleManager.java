@@ -6,6 +6,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
+import android.util.Log;
 
 import com.example.a49479.cenbleoperationapp.bleConnect.BleWriteResponse;
 import com.example.a49479.cenbleoperationapp.bleConnect.IBleConnector;
@@ -23,6 +24,7 @@ public class BleManager {
     private static final String TAG = "BleManager";
 
     private Context mContext;
+    protected final Object mLock = new Object();
 
     private BluetoothManager mBluetoothManager;
     private BluetoothAdapter mBluetoothAdapter;
@@ -38,6 +40,8 @@ public class BleManager {
 
     private HandlerThread mHandlerThread;
     private static Handler mEventHandler;          //后台线程Handler
+
+    private boolean mRequestCompleted;
 
     private BleManager() {
 
@@ -100,10 +104,12 @@ public class BleManager {
      * @param offSet
      */
     public void sendBleData(final String mac, final UUID serviceId, final UUID characterId, final byte[] data, final int mtuSize, final int offSet){
+        mRequestCompleted = false;
         byte[] tempData = null;
        int restLength = data.length-mtuSize;
 
         if (restLength <= 0) {
+            mRequestCompleted = true;
             return;
         }
 
@@ -128,6 +134,31 @@ public class BleManager {
                 }
             }
         });
+    }
+
+    public void sendBleDataAndWaitAck(final String mac, final UUID serviceId, final UUID characterId,final byte[] data,final int mtu){
+        mEventHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                //发送数据
+                sendBleData(mac,serviceId,characterId,data,mtu,0);
+
+                //等待回调
+                try {
+                    synchronized (mLock) {
+                        while ((!mRequestCompleted && mBleConnector.isConnectGatt(mac)))
+                            mLock.wait();
+                    }
+                } catch (final InterruptedException e) {
+                    Log.i(TAG,"sendBleDataAndWaitAck Sleeping interrupted", e);
+                }
+
+                //发送ack
+
+                //解析数据
+            }
+        });
+
     }
 
 }
