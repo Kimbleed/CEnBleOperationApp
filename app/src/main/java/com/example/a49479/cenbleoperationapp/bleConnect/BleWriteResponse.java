@@ -5,5 +5,5 @@ package com.example.a49479.cenbleoperationapp.bleConnect;
  */
 
 public interface BleWriteResponse {
-    void onResponse(int response);
+    void onResponse(int result);
 }

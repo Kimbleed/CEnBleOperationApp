@@ -1,16 +1,18 @@
 package com.example.a49479.cenbleoperationapp;
 
 import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
 import android.content.Context;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 
-import com.example.a49479.cenbleoperationapp.bleConnect.BleConnectorImpl;
+import com.example.a49479.cenbleoperationapp.bleConnect.BleWriteResponse;
 import com.example.a49479.cenbleoperationapp.bleConnect.IBleConnector;
 import com.example.a49479.cenbleoperationapp.bleScan.BleScannerCallback;
-import com.example.a49479.cenbleoperationapp.bleScan.BleScannerImpl;
 import com.example.a49479.cenbleoperationapp.bleScan.IBleScanner;
+
+import java.util.UUID;
 
 /**
  * Created by 49479 on 2018/4/23.
@@ -29,24 +31,16 @@ public class BleManager {
     private IBleScanner mBleScanner;
     private IBleConnector mBleConnector;
 
-    private BluetoothAdapter.LeScanCallback mLeScanCallback = new BluetoothAdapter.LeScanCallback() {
-        @Override
-        public void onLeScan(BluetoothDevice bluetoothDevice, int i, byte[] bytes) {
-            if (mBleScannerCallback != null)
-                mBleScannerCallback.onDeviceFound(bluetoothDevice);
-
-        }
-    };
-
-
-    private static final int EVENT_HANDLER_BLE_SCAN_OVERTIME = 0x1000;
-
     private boolean isInit;//是否已经初始化
 
     private BleScannerCallback mBleScannerCallback;
     private boolean isInScanning;
 
+    private HandlerThread mHandlerThread;
+    private static Handler mEventHandler;          //后台线程Handler
+
     private BleManager() {
+
     }
 
     private static class BleManagerHolder {
@@ -95,7 +89,45 @@ public class BleManager {
         mBleScanner.cancelLeScan();
     }
 
-    public void write(){
+
+    /**
+     * 发送蓝牙数据
+     * @param mac
+     * @param serviceId
+     * @param characterId
+     * @param data
+     * @param mtuSize
+     * @param offSet
+     */
+    public void sendBleData(final String mac, final UUID serviceId, final UUID characterId, final byte[] data, final int mtuSize, final int offSet){
+        byte[] tempData = null;
+       int restLength = data.length-mtuSize;
+
+        if (restLength <= 0) {
+            return;
+        }
+
+        if(restLength>mtuSize) {
+            tempData = new byte[mtuSize];
+            System.arraycopy(data, offSet, tempData, 0, mtuSize);
+        }
+        else{
+            tempData = new byte[restLength];
+            System.arraycopy(data, offSet, tempData, 0, restLength);
+        }
+        final int dataLength = tempData.length;
+        mBleConnector.writeNoRsp(mac, serviceId, characterId, tempData, new BleWriteResponse() {
+            @Override
+            public void onResponse(int result) {
+                if(result == BleCode.REQUEST_SUCCESS){
+                    int newOffSet = offSet+dataLength;
+                    sendBleData(mac,serviceId,characterId,data,mtuSize,newOffSet);
+                }
+                else{
+
+                }
+            }
+        });
     }
 
 }
