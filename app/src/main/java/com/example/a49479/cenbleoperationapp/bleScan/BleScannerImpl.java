@@ -4,6 +4,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
 
@@ -29,12 +30,29 @@ public class BleScannerImpl implements IBleScanner, BluetoothAdapter.LeScanCallb
 
     }
 
+    public class EventHandler extends Handler {
+
+        public EventHandler(Looper looper) {
+            super(looper);
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            super.handleMessage(msg);
+            switch (msg.what) {
+                case EVENT_HANDLER_BLE_SCAN_OVERTIME:
+                    stopLeScan();
+                    break;
+            }
+        }
+    }
+
     @Override
     public void init(BluetoothAdapter bluetoothAdapter){
         mBleAdapter = bluetoothAdapter;
         mHandlerThread = new HandlerThread("event handler thread", THREAD_PRIORITY_BACKGROUND);
         mHandlerThread.start();
-        mEventHandler = new Handler(mHandlerThread.getLooper());
+        mEventHandler = new EventHandler(mHandlerThread.getLooper());
     }
 
     @Override
@@ -98,17 +116,5 @@ public class BleScannerImpl implements IBleScanner, BluetoothAdapter.LeScanCallb
     }
 
     private static final int EVENT_HANDLER_BLE_SCAN_OVERTIME = 0x1001;
-
-    class EventHandler extends Handler {
-        @Override
-        public void handleMessage(Message msg) {
-            super.handleMessage(msg);
-            switch (msg.what) {
-                case EVENT_HANDLER_BLE_SCAN_OVERTIME:
-                    stopLeScan();
-                    break;
-            }
-        }
-    }
 
 }

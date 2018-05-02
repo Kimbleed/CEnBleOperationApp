@@ -10,7 +10,6 @@ import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothProfile;
 import android.content.Context;
 import android.content.Intent;
-import android.nfc.Tag;
 import android.support.annotation.NonNull;
 import android.text.TextUtils;
 import android.util.Log;
@@ -47,6 +46,8 @@ public class BleConnectorImpl implements IBleConnector {
     private BleConnectorResponse mBleConnectResponse;
     private BleNotifyResponse mBleNotifyResponse;
     private BleWriteResponse mBleWriteResponse;
+
+    private DiscoverServiceListener mDiscoverServiceListener;
 
     private BluetoothGattCallback mBleGattCallback = new BluetoothGattCallback() {
 
@@ -94,10 +95,18 @@ public class BleConnectorImpl implements IBleConnector {
         @Override
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
             super.onServicesDiscovered(gatt, status);
+            Log.i(TAG, "onServicesDiscovered status:"+status);
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 mGattServicesList = gatt.getServices();
                 if (mGattServicesList.size() <= 0) {
                     Log.i(TAG, "onServicesDiscovered services size 0");
+                }
+
+                //对应 writePrepare 返回false时，重新 调用 discoverServices，发现服务后，接着发送数据
+                if(mDiscoverServiceListener !=null){
+                    Log.i(TAG,"onServicesDiscovered retry writePrepare & writeBleData");
+                    mDiscoverServiceListener.onDiscover();  
+                    mDiscoverServiceListener = null;
                 }
 
             } else {
@@ -256,36 +265,12 @@ public class BleConnectorImpl implements IBleConnector {
 
     @Override
     public void write(String mac, UUID serviceId, UUID characterId, byte[] data, BleWriteResponse response) {
-        mBleWriteResponse = response;
-        if (mac.equals(mMac)) {
-            if (mBleConnectState == BluetoothProfile.STATE_CONNECTED) {
-                if (writePrepare(serviceId, characterId, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT))
-                    writeData(data);
-            } else {
-                Log.i(TAG, "write ble connect state is " + BleCode.toString(mBleConnectState));
-                writeResponse(mBleConnectState);
-            }
-        } else {
-            Log.i(TAG, "write params mac doesn't match the mMac");
-            writeResponse(BleCode.REQUEST_MAC_NO_MATCH);
-        }
+        writeData(mac,serviceId,characterId,data,BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,response);
     }
 
     @Override
-    public void writeNoRsp(String mac, UUID serviceId, UUID characterId, byte[] data, BleWriteResponse response) {
-        mBleWriteResponse = response;
-        if (mac.equals(mMac)) {
-            if (mBleConnectState == BluetoothProfile.STATE_CONNECTED) {
-                if (writePrepare(serviceId, characterId, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE))
-                    writeData(data);
-            } else {
-                Log.i(TAG, "write ble connect state is " + BleCode.toString(mBleConnectState));
-                writeResponse(mBleConnectState);
-            }
-        } else {
-            Log.i(TAG, "write params mac doesn't match the mMac");
-            writeResponse(BleCode.REQUEST_MAC_NO_MATCH);
-        }
+    public void writeNoRsp(String mac, UUID serviceId, UUID characterId, final byte[] data, BleWriteResponse response) {
+        writeData(mac,serviceId,characterId,data,BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE,response);
     }
 
     @Override
@@ -409,43 +394,65 @@ public class BleConnectorImpl implements IBleConnector {
         return true;
     }
 
+    /**
+     * 写数据前的条件判定
+     *
+     * @param mac
+     * @param serviceId
+     * @param characterId
+     * @param data
+     * @param writeType     BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE  或 BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+     * @param response
+     */
+    private void writeData(String mac,final UUID serviceId,final UUID characterId,final byte[] data,final int writeType,BleWriteResponse response){
+        mBleWriteResponse = response;
+        if (mac.equals(mMac)) {
+            if (mBleConnectState == BluetoothProfile.STATE_CONNECTED) {
+                if (writePrepare(serviceId, characterId, writeType)) {
+                    writeBleData(data);
+                }
+                else{
+                    // 若 门锁连接时，在onConnectionStateChange中 discoverServices 因未知因数 而 未成功发现服务
+                    // 再发现一次
+                    mBleGatt.discoverServices();
+                    mDiscoverServiceListener = new DiscoverServiceListener() {
+                        @Override
+                        public void onDiscover() {
+                            if (writePrepare(serviceId, characterId, writeType)) {
+                                writeBleData(data);
+                            }
+                        }
+                    };
+                }
+            } else {
+                Log.i(TAG, "write ble connect state is " + BleCode.toString(mBleConnectState));
+                writeResponse(mBleConnectState);
+            }
+        } else {
+            Log.i(TAG, "write params mac doesn't match the mMac");
+            writeResponse(BleCode.REQUEST_MAC_NO_MATCH);
+        }
+    }
 
     /**
      * 写数据到Characteristic
      *
      * @param data
      */
-    private void writeData(byte[] data) {
+    private void writeBleData(byte[] data) {
         mWriteBleCharacteristic.setValue(data);
         mBleGatt.writeCharacteristic(mWriteBleCharacteristic);
     }
 
-
+    /**
+     * 发送广播，转发蓝牙接收数据
+     * @param action
+     * @param characteristic
+     */
     private void broadcastUpdate(String action, BluetoothGattCharacteristic characteristic) {
         final Intent intent = new Intent(action);
-
-        // This is special handling for the Heart Rate Measurement profile.  Data parsing is
-        // carried out as per profile specifications:
-        // http://developer.bluetooth.org/gatt/characteristics/Pages/CharacteristicViewer.aspx?u=org.bluetooth.characteristic.heart_rate_measurement.xml
-//        if (UUID_HEART_RATE_MEASUREMENT.equals(characteristic.getUuid())) {
-//            int flag = characteristic.getProperties();
-//            int format = -1;
-//            if ((flag & 0x01) != 0) {
-//                format = BluetoothGattCharacteristic.FORMAT_UINT16;
-//                Log.d(TAG, "Heart rate format UINT16.");
-//            } else {
-//                format = BluetoothGattCharacteristic.FORMAT_UINT8;
-//                Log.d(TAG, "Heart rate format UINT8.");
-//            }
-//            final int heartRate = characteristic.getIntValue(format, 1);
-//            Log.d(TAG, String.format("Received heart rate: %d", heartRate));
-//            intent.putExtra(EXTRA_DATA, String.valueOf(heartRate));
-//        } else {
-        // For all other profiles, writes the data formatted in HEX.对于所有的文件，写入十六进制格式的文件
-        //这里读取到数据
         final byte[] data = characteristic.getValue();
         Log.i(TAG, "broadcastUpdate data:" + new Gson().toJson(data));
-
         if (data != null && data.length > 0) {
             final StringBuilder stringBuilder = new StringBuilder(data.length);
             for (byte byteChar : data)
@@ -454,12 +461,22 @@ public class BleConnectorImpl implements IBleConnector {
             // intent.putExtra(EXTRA_DATA, new String(data) + "\n" + stringBuilder.toString());
             intent.putExtra(BleReceiverImpl.EXTRA_DATA, new String(data));
         }
-//        }
         sendBroadcast(intent);
     }
 
+    /**
+     * 发送广播
+     * @param intent
+     */
     private void sendBroadcast(Intent intent) {
         mContext.sendBroadcast(intent);
+    }
+
+    /**
+     * 用于 调用writeData 时才发现的服务未发现的情况
+     */
+    private interface DiscoverServiceListener {
+        void onDiscover();
     }
 
 }
