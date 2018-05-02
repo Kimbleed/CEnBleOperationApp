@@ -5,6 +5,10 @@ import android.support.annotation.NonNull;
 
 /**
  * Created by 49479 on 2018/4/23.
+ *
+ * 蓝牙扫描器接口
+ * 处理扫描工作
+ *
  */
 
 public interface IBleScanner  {

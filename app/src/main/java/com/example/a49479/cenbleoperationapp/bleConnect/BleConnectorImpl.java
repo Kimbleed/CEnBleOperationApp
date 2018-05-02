@@ -9,11 +9,14 @@ import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothProfile;
 import android.content.Context;
+import android.content.Intent;
+import android.nfc.Tag;
 import android.support.annotation.NonNull;
 import android.text.TextUtils;
 import android.util.Log;
 
 import com.example.a49479.cenbleoperationapp.BleCode;
+import com.google.gson.Gson;
 
 import java.util.List;
 import java.util.UUID;
@@ -39,6 +42,8 @@ public class BleConnectorImpl implements IBleConnector {
     private BluetoothGattCharacteristic mWriteBleCharacteristic;
 
     private int mBleConnectState = BluetoothProfile.STATE_DISCONNECTED;
+
+    public static final String EXTRA_DATA = "extra_data";
 
     private BleConnectorResponse mBleConnectResponse;
     private BleNotifyResponse mBleNotifyResponse;
@@ -131,7 +136,7 @@ public class BleConnectorImpl implements IBleConnector {
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
             String characterId = characteristic.getUuid().toString();
             String serviceId = characteristic.getService().getUuid().toString();
-            Log.i(TAG,"onCharacteristicChanged serviceId:"+serviceId+"  characterId:"+characterId);
+            Log.i(TAG, "onCharacteristicChanged serviceId:" + serviceId + "  characterId:" + characterId);
             //解析蓝牙设备返回来的数据
         }
 
@@ -181,8 +186,10 @@ public class BleConnectorImpl implements IBleConnector {
 
     @Override
     public boolean isConnectGatt(String mac) {
-        if(mac.equals(mMac)&& mBleConnectState == BluetoothProfile.STATE_CONNECTED)
+        Log.i(TAG, "isConnectGatt mac:" + mac + "state:" + BleCode.toString(mBleConnectState));
+        if (mac.equals(mMac) && mBleConnectState == BluetoothProfile.STATE_CONNECTED) {
             return true;
+        }
         return false;
     }
 
@@ -267,11 +274,17 @@ public class BleConnectorImpl implements IBleConnector {
     @Override
     public void writeNoRsp(String mac, UUID serviceId, UUID characterId, byte[] data, BleWriteResponse response) {
         mBleWriteResponse = response;
-        if (mac.equals(mMac) && mBleConnectState == BluetoothProfile.STATE_CONNECTED) {
-            if (writePrepare(serviceId, characterId, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE))
-                writeData(data);
+        if (mac.equals(mMac)) {
+            if (mBleConnectState == BluetoothProfile.STATE_CONNECTED) {
+                if (writePrepare(serviceId, characterId, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE))
+                    writeData(data);
+            } else {
+                Log.i(TAG, "write ble connect state is " + BleCode.toString(mBleConnectState));
+                writeResponse(mBleConnectState);
+            }
         } else {
-
+            Log.i(TAG, "write params mac doesn't match the mMac");
+            writeResponse(BleCode.REQUEST_MAC_NO_MATCH);
         }
     }
 
@@ -394,11 +407,54 @@ public class BleConnectorImpl implements IBleConnector {
 
     /**
      * 写数据到Characteristic
+     *
      * @param data
      */
     private void writeData(byte[] data) {
         mWriteBleCharacteristic.setValue(data);
         mBleGatt.writeCharacteristic(mWriteBleCharacteristic);
+    }
+
+
+    private void broadcastUpdate(String action, BluetoothGattCharacteristic characteristic) {
+        final Intent intent = new Intent(action);
+
+        // This is special handling for the Heart Rate Measurement profile.  Data parsing is
+        // carried out as per profile specifications:
+        // http://developer.bluetooth.org/gatt/characteristics/Pages/CharacteristicViewer.aspx?u=org.bluetooth.characteristic.heart_rate_measurement.xml
+//        if (UUID_HEART_RATE_MEASUREMENT.equals(characteristic.getUuid())) {
+//            int flag = characteristic.getProperties();
+//            int format = -1;
+//            if ((flag & 0x01) != 0) {
+//                format = BluetoothGattCharacteristic.FORMAT_UINT16;
+//                Log.d(TAG, "Heart rate format UINT16.");
+//            } else {
+//                format = BluetoothGattCharacteristic.FORMAT_UINT8;
+//                Log.d(TAG, "Heart rate format UINT8.");
+//            }
+//            final int heartRate = characteristic.getIntValue(format, 1);
+//            Log.d(TAG, String.format("Received heart rate: %d", heartRate));
+//            intent.putExtra(EXTRA_DATA, String.valueOf(heartRate));
+//        } else {
+        // For all other profiles, writes the data formatted in HEX.对于所有的文件，写入十六进制格式的文件
+        //这里读取到数据
+        final byte[] data = characteristic.getValue();
+        Log.i(TAG, "broadcastUpdate data:" + new Gson().toJson(data));
+
+        if (data != null && data.length > 0) {
+            final StringBuilder stringBuilder = new StringBuilder(data.length);
+            for (byte byteChar : data)
+                //以十六进制的形式输出
+                stringBuilder.append(String.format("%02X ", byteChar));
+            // intent.putExtra(EXTRA_DATA, new String(data) + "\n" + stringBuilder.toString());
+            intent.putExtra(EXTRA_DATA, new String(data));
+        }
+//        }
+        sendBroadcast(intent);
+    }
+
+    private void sendBroadcast(Intent intent) {
+        mContext.sendBroadcast(intent);
     }
 
 }

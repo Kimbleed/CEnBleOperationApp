@@ -7,6 +7,9 @@ import java.util.UUID;
 
 /**
  * Created by 49479 on 2018/4/24.
+ *
+ * 蓝牙连接器接口
+ * 处理连接工作和写数据工作
  */
 
 public interface IBleConnector {

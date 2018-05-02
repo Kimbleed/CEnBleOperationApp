@@ -16,7 +16,6 @@ public class BleCode {
     // 目标mac 与  当前mac不一致
     public static final int REQUEST_MAC_NO_MATCH = 0x104;
 
-
     public static String toString(int code) {
         switch (code){
             case REQUEST_SUCCESS:

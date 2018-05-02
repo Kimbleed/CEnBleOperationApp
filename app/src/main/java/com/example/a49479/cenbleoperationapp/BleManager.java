@@ -24,7 +24,6 @@ public class BleManager {
     private static final String TAG = "BleManager";
 
     private Context mContext;
-    protected final Object mLock = new Object();
 
     private BluetoothManager mBluetoothManager;
     private BluetoothAdapter mBluetoothAdapter;
@@ -91,74 +90,6 @@ public class BleManager {
      */
     public void cancelLeScan() {
         mBleScanner.cancelLeScan();
-    }
-
-
-    /**
-     * 发送蓝牙数据
-     * @param mac
-     * @param serviceId
-     * @param characterId
-     * @param data
-     * @param mtuSize
-     * @param offSet
-     */
-    public void sendBleData(final String mac, final UUID serviceId, final UUID characterId, final byte[] data, final int mtuSize, final int offSet){
-        mRequestCompleted = false;
-        byte[] tempData = null;
-       int restLength = data.length-mtuSize;
-
-        if (restLength <= 0) {
-            mRequestCompleted = true;
-            return;
-        }
-
-        if(restLength>mtuSize) {
-            tempData = new byte[mtuSize];
-            System.arraycopy(data, offSet, tempData, 0, mtuSize);
-        }
-        else{
-            tempData = new byte[restLength];
-            System.arraycopy(data, offSet, tempData, 0, restLength);
-        }
-        final int dataLength = tempData.length;
-        mBleConnector.writeNoRsp(mac, serviceId, characterId, tempData, new BleWriteResponse() {
-            @Override
-            public void onResponse(int result) {
-                if(result == BleCode.REQUEST_SUCCESS){
-                    int newOffSet = offSet+dataLength;
-                    sendBleData(mac,serviceId,characterId,data,mtuSize,newOffSet);
-                }
-                else{
-
-                }
-            }
-        });
-    }
-
-    public void sendBleDataAndWaitAck(final String mac, final UUID serviceId, final UUID characterId,final byte[] data,final int mtu){
-        mEventHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                //发送数据
-                sendBleData(mac,serviceId,characterId,data,mtu,0);
-
-                //等待回调
-                try {
-                    synchronized (mLock) {
-                        while ((!mRequestCompleted && mBleConnector.isConnectGatt(mac)))
-                            mLock.wait();
-                    }
-                } catch (final InterruptedException e) {
-                    Log.i(TAG,"sendBleDataAndWaitAck Sleeping interrupted", e);
-                }
-
-                //发送ack
-
-                //解析数据
-            }
-        });
-
     }
 
 }
