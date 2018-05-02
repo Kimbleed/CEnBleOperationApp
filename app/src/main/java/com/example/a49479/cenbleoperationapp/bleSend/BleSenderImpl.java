@@ -80,6 +80,8 @@ public class BleSenderImpl implements IBleSender {
     public void sendPackageData(BleDataPackage bleDataPackage) {
         Message msg = new Message();
         msg.what = MSG_SEND_PACKAGE;
+        msg.obj = bleDataPackage;
+        mSendHandler.sendMessage(msg);
 
     }
 

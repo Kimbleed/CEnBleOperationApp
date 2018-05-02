@@ -8,10 +8,15 @@ import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 import android.util.Log;
 
+import com.example.a49479.cenbleoperationapp.bleConnect.BleConnectorResponse;
 import com.example.a49479.cenbleoperationapp.bleConnect.BleWriteResponse;
 import com.example.a49479.cenbleoperationapp.bleConnect.IBleConnector;
+import com.example.a49479.cenbleoperationapp.bleReceive.BleReceiveResponse;
+import com.example.a49479.cenbleoperationapp.bleReceive.IBleReceiver;
 import com.example.a49479.cenbleoperationapp.bleScan.BleScannerCallback;
 import com.example.a49479.cenbleoperationapp.bleScan.IBleScanner;
+import com.example.a49479.cenbleoperationapp.bleSend.BleDataPackage;
+import com.example.a49479.cenbleoperationapp.bleSend.IBleSender;
 
 import java.util.UUID;
 
@@ -31,14 +36,13 @@ public class BleManager {
 
     private IBleScanner mBleScanner;
     private IBleConnector mBleConnector;
+    private IBleSender mBleSender;
+    private IBleReceiver mBleReceiver;
 
     private boolean isInit;//是否已经初始化
 
     private BleScannerCallback mBleScannerCallback;
     private boolean isInScanning;
-
-    private HandlerThread mHandlerThread;
-    private static Handler mEventHandler;          //后台线程Handler
 
     private boolean mRequestCompleted;
 
@@ -73,6 +77,10 @@ public class BleManager {
 
         mBleConnector = config.mBleConnector;
 
+        mBleSender = config.mBleSender;
+
+        mBleReceiver = config.mBleReceiver;
+
         isInit = true;
     }
 
@@ -90,6 +98,39 @@ public class BleManager {
      */
     public void cancelLeScan() {
         mBleScanner.cancelLeScan();
+    }
+
+    /**
+     * 请求蓝牙连接
+     * @param mac
+     * @param response
+     */
+    public void connectGatt(String mac, BleConnectorResponse response){
+        mBleConnector.connectGatt(mac,response);
+    }
+
+    /**
+     * 发送蓝牙请求
+     * @param bleDataPackage
+     * @param response
+     */
+    public void sendBleData(BleDataPackage bleDataPackage, BleReceiveResponse response){
+        mBleSender.sendPackageData(bleDataPackage);
+        mBleReceiver.receive(response);
+    }
+
+    /**
+     * 发送蓝牙请求
+     * @param serviceId     已连接设备的service Id
+     * @param characterId   characteristic Id
+     * @param data          字节流数据
+     * @param mtu           mBleConnector 中 write 的 长度
+     * @param response      接收数据的回调
+     */
+    public void sendBleData(UUID serviceId,UUID characterId,byte[] data,int mtu,BleReceiveResponse response){
+        BleDataPackage bleDataPackage = new BleDataPackage(mBleConnector.getConnectGattMac(),serviceId,characterId,data,mtu);
+        mBleSender.sendPackageData(bleDataPackage);
+        mBleReceiver.receive(response);
     }
 
 }

@@ -58,12 +58,17 @@ public class BleScannerImpl implements IBleScanner, BluetoothAdapter.LeScanCallb
         if(mBleScannerCallback!=null)
         mBleScannerCallback.onStartScan();
 
-        isInScanning = true;
-
-        mBleAdapter.startLeScan(BleScannerImpl.this);
-
         mEventHandler.removeMessages(EVENT_HANDLER_BLE_SCAN_OVERTIME);
         mEventHandler.sendEmptyMessageDelayed(EVENT_HANDLER_BLE_SCAN_OVERTIME,mills);
+
+        if(isInScanning) {
+            Log.i(TAG,"startLeScan is scanning");
+            return;
+        }
+
+        isInScanning = true;
+        Log.i(TAG,"startLeScan start scan");
+        mBleAdapter.startLeScan(BleScannerImpl.this);
 
     }
 

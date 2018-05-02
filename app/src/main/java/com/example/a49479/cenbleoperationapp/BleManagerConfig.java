@@ -6,6 +6,7 @@ import android.content.Context;
 
 import com.example.a49479.cenbleoperationapp.bleConnect.BleConnectorImpl;
 import com.example.a49479.cenbleoperationapp.bleConnect.IBleConnector;
+import com.example.a49479.cenbleoperationapp.bleReceive.BleReceiverImpl;
 import com.example.a49479.cenbleoperationapp.bleReceive.IBleReceiver;
 import com.example.a49479.cenbleoperationapp.bleScan.BleScannerImpl;
 import com.example.a49479.cenbleoperationapp.bleScan.IBleScanner;
@@ -47,7 +48,8 @@ public class BleManagerConfig {
         mBleSender .init(mBleConnector,mLock);
 
         //蓝牙数据接收管理类(蓝牙数据接收器)
-
+        mBleReceiver = new BleReceiverImpl();
+        mBleReceiver.init(mContext,mLock);
 
     }
 

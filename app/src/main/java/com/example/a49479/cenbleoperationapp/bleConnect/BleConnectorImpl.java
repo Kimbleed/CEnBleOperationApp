@@ -16,6 +16,7 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.example.a49479.cenbleoperationapp.BleCode;
+import com.example.a49479.cenbleoperationapp.bleReceive.BleReceiverImpl;
 import com.google.gson.Gson;
 
 import java.util.List;
@@ -42,8 +43,6 @@ public class BleConnectorImpl implements IBleConnector {
     private BluetoothGattCharacteristic mWriteBleCharacteristic;
 
     private int mBleConnectState = BluetoothProfile.STATE_DISCONNECTED;
-
-    public static final String EXTRA_DATA = "extra_data";
 
     private BleConnectorResponse mBleConnectResponse;
     private BleNotifyResponse mBleNotifyResponse;
@@ -137,7 +136,8 @@ public class BleConnectorImpl implements IBleConnector {
             String characterId = characteristic.getUuid().toString();
             String serviceId = characteristic.getService().getUuid().toString();
             Log.i(TAG, "onCharacteristicChanged serviceId:" + serviceId + "  characterId:" + characterId);
-            //解析蓝牙设备返回来的数据
+            //转发蓝牙设备返回来的数据
+            broadcastUpdate(BleReceiverImpl.ACTION_AVAILABLE_DATA,characteristic);
         }
 
         /**
@@ -286,6 +286,11 @@ public class BleConnectorImpl implements IBleConnector {
             Log.i(TAG, "write params mac doesn't match the mMac");
             writeResponse(BleCode.REQUEST_MAC_NO_MATCH);
         }
+    }
+
+    @Override
+    public String getConnectGattMac() {
+        return mMac;
     }
 
     /**
@@ -447,7 +452,7 @@ public class BleConnectorImpl implements IBleConnector {
                 //以十六进制的形式输出
                 stringBuilder.append(String.format("%02X ", byteChar));
             // intent.putExtra(EXTRA_DATA, new String(data) + "\n" + stringBuilder.toString());
-            intent.putExtra(EXTRA_DATA, new String(data));
+            intent.putExtra(BleReceiverImpl.EXTRA_DATA, new String(data));
         }
 //        }
         sendBroadcast(intent);

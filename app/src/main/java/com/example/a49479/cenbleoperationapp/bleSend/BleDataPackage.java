@@ -15,12 +15,12 @@ public class BleDataPackage implements Serializable{
     int mtu;            // 一次写入的数组长度
     int offSet;         // 偏移量
 
-    public BleDataPackage(String mac, UUID serviceId, UUID characterId, byte[] data, int mtu, int offSet) {
+    public BleDataPackage(String mac, UUID serviceId, UUID characterId, byte[] data, int mtu) {
         this.mac = mac;
         this.serviceId = serviceId;
         this.characterId = characterId;
         this.data = data;
         this.mtu = mtu;
-        this.offSet = offSet;
+        this.offSet = 0;
     }
 }

@@ -25,4 +25,6 @@ public interface IBleConnector {
     void writeNoRsp(String mac,UUID serviceId,UUID characterId,byte[] data,BleWriteResponse response);
 
     void notify(String mac, UUID serviceId, UUID characterId, final BleNotifyResponse response);
+
+    String getConnectGattMac();
 }
